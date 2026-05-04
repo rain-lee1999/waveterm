@@ -30,6 +30,7 @@ const previewElectronApi: ElectronApi = {
     getUpdaterChannel: () => "",
     installAppUpdate: () => {},
     onMenuItemAbout: (_callback: () => void) => {},
+    onMenuItemToggleTermButtonBar: (_callback: () => void) => {},
     updateWindowControlsOverlay: (_rect: Dimensions) => {},
     onReinjectKey: (_callback: (waveEvent: WaveKeyboardEvent) => void) => {},
     setWebviewFocus: (_focusedId: number) => {},

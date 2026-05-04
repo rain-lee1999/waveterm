@@ -200,6 +200,15 @@ function makeAppMenuItems(webContents: electron.WebContents): Electron.MenuItemC
     return appMenuItems;
 }
 
+export function makeTermButtonBarViewMenuItem(webContents: electron.WebContents): Electron.MenuItemConstructorOptions {
+    return {
+        label: "Toggle Terminal Button Bar",
+        click: (_, window) => {
+            (getWindowWebContents(window) ?? webContents)?.send("menu-item-toggle-term-button-bar");
+        },
+    };
+}
+
 function makeViewMenu(
     webContents: electron.WebContents,
     callbacks: AppMenuCallbacks,
@@ -312,6 +321,7 @@ function makeViewMenu(
             role: "togglefullscreen",
         },
         { type: "separator" },
+        makeTermButtonBarViewMenuItem(webContents),
         {
             label: "Toggle Widgets Bar",
             click: () => {
@@ -321,7 +331,10 @@ function makeViewMenu(
                     const oref = `workspace:${workspaceId}`;
                     const meta = await RpcApi.GetMetaCommand(ElectronWshClient, { oref });
                     const current = meta?.["layout:widgetsvisible"] ?? true;
-                    await RpcApi.SetMetaCommand(ElectronWshClient, { oref, meta: { "layout:widgetsvisible": !current } });
+                    await RpcApi.SetMetaCommand(ElectronWshClient, {
+                        oref,
+                        meta: { "layout:widgetsvisible": !current },
+                    });
                 });
             },
         },

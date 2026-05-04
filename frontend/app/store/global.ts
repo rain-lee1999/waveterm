@@ -3,6 +3,7 @@
 
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { getNextTermButtonBarConfig } from "@/app/view/term/term-buttonbar";
 import {
     getLayoutModelForStaticTab,
     LayoutTreeActionType,
@@ -46,6 +47,9 @@ function initGlobal(initOpts: GlobalInitOptions) {
     try {
         getApi().onMenuItemAbout(() => {
             modalsModel.pushModal("AboutModal");
+        });
+        getApi().onMenuItemToggleTermButtonBar(() => {
+            fireAndForget(toggleFocusedTermButtonBar);
         });
     } catch (e) {
         console.log("failed to initialize onMenuItemAbout handler", e);
@@ -592,6 +596,26 @@ function refocusNode(blockId: string) {
     }
 }
 
+async function toggleFocusedTermButtonBar() {
+    const blockId = getFocusedBlockId();
+    if (!blockId) {
+        modalsModel.pushModal("MessageModal", { children: "Focus a terminal block before toggling the button bar." });
+        return;
+    }
+    const blockAtom = WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId));
+    const blockData = globalStore.get(blockAtom);
+    if (blockData?.meta?.view !== "term") {
+        modalsModel.pushModal("MessageModal", { children: "Button Bar is only available for terminal blocks." });
+        return;
+    }
+    const buttonBarConfig = globalStore.get(getOverrideConfigAtom(blockId, "term:buttonbar"));
+    await RpcApi.SetMetaCommand(TabRpcClient, {
+        oref: WOS.makeORef("block", blockId),
+        meta: { "term:buttonbar": getNextTermButtonBarConfig(buttonBarConfig) },
+    });
+    refocusNode(blockId);
+}
+
 async function loadConnStatus() {
     const connStatusArr = await ClientService.GetAllConnStatus();
     if (connStatusArr == null) {
@@ -685,7 +709,6 @@ export {
     getBlockComponentModel,
     getBlockMetaKeyAtom,
     getBlockTermDurableAtom,
-    getTabMetaKeyAtom,
     getConfigBackgroundAtom,
     getConnConfigKeyAtom,
     getConnStatusAtom,
@@ -697,6 +720,7 @@ export {
     getOverrideConfigAtom,
     getSettingsKeyAtom,
     getSettingsPrefixAtom,
+    getTabMetaKeyAtom,
     getUserName,
     globalPrimaryTabStartup,
     globalStore,
