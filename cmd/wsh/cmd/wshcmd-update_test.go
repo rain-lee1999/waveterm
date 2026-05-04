@@ -163,7 +163,7 @@ func TestRunUpdateSimplePackagesAppAndInstallsActiveWsh(t *testing.T) {
 		"git diff --name-only HEAD FETCH_HEAD",
 		"git merge --ff-only FETCH_HEAD",
 		"npm run build:prod",
-		"npm exec electron-builder -- -c electron-builder.config.cjs -p never --dir",
+		"env CSC_IDENTITY_AUTO_DISCOVERY=false npm exec electron-builder -- -c electron-builder.config.cjs -p never --dir",
 		"rm -rf /Applications/Wave.app",
 		"ditto /repo/waveterm/dist/mac-arm64/Wave.app /Applications/Wave.app",
 		"env GOTOOLCHAIN=go1.26.2 go build -ldflags=-s -w -X main.BuildTime=202605041234 -X main.WaveVersion=0.14.5 -o /active/bin/wave cmd/wsh/main-wsh.go",

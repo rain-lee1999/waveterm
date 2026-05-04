@@ -520,7 +520,7 @@ func packageWaveApp(ctx updateContext) error {
 		Command []string
 	}{
 		{Label: "Building frontend/backend bundle", Command: []string{"npm", "run", "build:prod"}},
-		{Label: "Packaging Wave app", Command: []string{"npm", "exec", "electron-builder", "--", "-c", "electron-builder.config.cjs", "-p", "never", "--dir"}},
+		{Label: "Packaging Wave app", Command: []string{"env", "CSC_IDENTITY_AUTO_DISCOVERY=false", "npm", "exec", "electron-builder", "--", "-c", "electron-builder.config.cjs", "-p", "never", "--dir"}},
 	}
 	for _, command := range commands {
 		announceUpdateStep(ctx, command.Label, strings.Join(command.Command, " "))
