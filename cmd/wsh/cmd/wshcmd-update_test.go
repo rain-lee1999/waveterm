@@ -164,8 +164,8 @@ func TestRunUpdateSimplePackagesAppAndInstallsActiveWsh(t *testing.T) {
 		"npm exec electron-builder -- -c electron-builder.config.cjs -p never --dir",
 		"rm -rf /Applications/Wave.app",
 		"ditto /repo/waveterm/dist/mac-arm64/Wave.app /Applications/Wave.app",
-		"go build -ldflags=-s -w -X main.BuildTime=202605041234 -X main.WaveVersion=0.14.5 -o /active/bin/wave cmd/wsh/main-wsh.go",
-		"go build -ldflags=-s -w -X main.BuildTime=202605041234 -X main.WaveVersion=0.14.5 -o /active/bin/wsh cmd/wsh/main-wsh.go",
+		"env GOTOOLCHAIN=go1.26.2 go build -ldflags=-s -w -X main.BuildTime=202605041234 -X main.WaveVersion=0.14.5 -o /active/bin/wave cmd/wsh/main-wsh.go",
+		"env GOTOOLCHAIN=go1.26.2 go build -ldflags=-s -w -X main.BuildTime=202605041234 -X main.WaveVersion=0.14.5 -o /active/bin/wsh cmd/wsh/main-wsh.go",
 		"git rev-parse HEAD",
 	}
 	if !reflect.DeepEqual(runner.calls, wantCalls) {
@@ -236,6 +236,9 @@ func TestRunUpdateSetupRunsRcfilesAfterFullUpdate(t *testing.T) {
 
 	if !runner.calledContains("npm install") {
 		t.Fatalf("full setup update should install dependencies, calls: %#v", runner.calls)
+	}
+	if !runner.calledContains("env GOTOOLCHAIN=go1.26.2 go mod tidy") {
+		t.Fatalf("full setup update should pin usable Go toolchain, calls: %#v", runner.calls)
 	}
 	if !runner.calledContains("npm run build:prod") || !runner.calledContains("electron-builder") || !runner.calledContains("ditto /repo/waveterm/dist/mac-arm64/Wave.app /Applications/Wave.app") {
 		t.Fatalf("full setup update should package/install app, calls: %#v", runner.calls)

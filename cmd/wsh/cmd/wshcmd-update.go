@@ -475,16 +475,25 @@ func runUpdateCommand(ctx updateContext, command []string) (string, error) {
 	return ctx.Runner.Run(ctx.RepoDir, command[0], command[1:]...)
 }
 
+func goUpdateCommand(args ...string) []string {
+	toolchain := os.Getenv("WAVETERM_UPDATE_GOTOOLCHAIN")
+	if toolchain == "" {
+		toolchain = "go1.26.2"
+	}
+	cmd := []string{"env", "GOTOOLCHAIN=" + toolchain, "go"}
+	return append(cmd, args...)
+}
+
 func runFullUpdatePrep(ctx updateContext) error {
 	commands := []struct {
 		Label   string
 		Command []string
 	}{
 		{Label: "Installing dependencies", Command: []string{"npm", "install", "--foreground-scripts"}},
-		{Label: "Tidying Go modules", Command: []string{"go", "mod", "tidy"}},
-		{Label: "Generating schema/types", Command: []string{"go", "run", "cmd/generateschema/main-generateschema.go"}},
-		{Label: "Generating TypeScript types", Command: []string{"go", "run", "cmd/generatets/main-generatets.go"}},
-		{Label: "Generating Go constants", Command: []string{"go", "run", "cmd/generatego/main-generatego.go"}},
+		{Label: "Tidying Go modules", Command: goUpdateCommand("mod", "tidy")},
+		{Label: "Generating schema/types", Command: goUpdateCommand("run", "cmd/generateschema/main-generateschema.go")},
+		{Label: "Generating TypeScript types", Command: goUpdateCommand("run", "cmd/generatets/main-generatets.go")},
+		{Label: "Generating Go constants", Command: goUpdateCommand("run", "cmd/generatego/main-generatego.go")},
 	}
 	for _, command := range commands {
 		announceUpdateStep(ctx, command.Label, strings.Join(command.Command, " "))
@@ -550,7 +559,7 @@ func buildAndInstallCommandBinary(ctx updateContext, label string, outPath strin
 	buildTime := ctx.Now().Format("200601021504")
 	ldflags := fmt.Sprintf("-s -w -X main.BuildTime=%s -X main.WaveVersion=%s", buildTime, ctx.Version)
 	announceUpdateStep(ctx, label, outPath)
-	_, err := runUpdateCommand(ctx, []string{"go", "build", "-ldflags=" + ldflags, "-o", outPath, "cmd/wsh/main-wsh.go"})
+	_, err := runUpdateCommand(ctx, goUpdateCommand("build", "-ldflags="+ldflags, "-o", outPath, "cmd/wsh/main-wsh.go"))
 	return err
 }
 
