@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -157,14 +158,19 @@ func TestRunUpdateSimplePackagesAppAndInstallsActiveWsh(t *testing.T) {
 		t.Fatalf("runUpdate() error = %v", err)
 	}
 
+	serverArch := packageBinaryArchName()
+	serverBuildCall := "env GOTOOLCHAIN=go1.26.2 CGO_ENABLED=1 GOARCH=" + runtime.GOARCH + " go build -tags osusergo,sqlite_omit_load_extension -ldflags=-X main.BuildTime=202605041234 -X main.WaveVersion=0.14.5 -o dist/bin/wavesrv." + serverArch + " cmd/server/main-server.go"
 	wantCalls := []string{
 		"git status --porcelain",
 		"ps -axo pid=,command=",
 		"git fetch --quiet /repo/source-waveterm main",
 		"git diff --name-only HEAD FETCH_HEAD",
 		"git merge --ff-only FETCH_HEAD",
+		"mkdir -p dist/bin",
+		serverBuildCall,
 		"npm run build:prod",
 		"env CSC_IDENTITY_AUTO_DISCOVERY=false npm exec electron-builder -- -c electron-builder.config.cjs -p never --dir",
+		"test -x /repo/waveterm/dist/mac-arm64/Wave.app/Contents/Resources/app.asar.unpacked/dist/bin/wavesrv." + serverArch,
 		"rm -rf /Applications/Wave.app",
 		"ditto /repo/waveterm/dist/mac-arm64/Wave.app /Applications/Wave.app",
 		"env GOTOOLCHAIN=go1.26.2 go build -ldflags=-s -w -X main.BuildTime=202605041234 -X main.WaveVersion=0.14.5 -o /active/bin/wave cmd/wsh/main-wsh.go",
@@ -177,6 +183,37 @@ func TestRunUpdateSimplePackagesAppAndInstallsActiveWsh(t *testing.T) {
 	out := stdout.String()
 	if !strings.Contains(out, "Wave app updated") || !strings.Contains(out, "wave updated") || !strings.Contains(out, "wsh updated") {
 		t.Fatalf("expected app and wsh success output, got %q", out)
+	}
+}
+
+func TestRunUpdateSimpleBuildsPackagedWaveSrvBeforeElectronBuilder(t *testing.T) {
+	runner := &recordingUpdateRunner{outputs: map[string]string{
+		"git status --porcelain":               "",
+		"git diff --name-only HEAD FETCH_HEAD": "frontend/app/view/term/term.tsx\n",
+		"git rev-parse HEAD":                   "abcdef1234567890\n",
+	}}
+	var stdout bytes.Buffer
+
+	err := runUpdate(updateOptions{Simple: true}, testUpdateContext(runner, &stdout))
+	if err != nil {
+		t.Fatalf("runUpdate() error = %v", err)
+	}
+
+	serverBuildIdx := -1
+	electronBuilderIdx := -1
+	for i, call := range runner.calls {
+		if strings.Contains(call, "go build") && strings.Contains(call, "cmd/server/main-server.go") && strings.Contains(call, "dist/bin/wavesrv.") {
+			serverBuildIdx = i
+		}
+		if strings.Contains(call, "electron-builder") {
+			electronBuilderIdx = i
+		}
+	}
+	if serverBuildIdx == -1 {
+		t.Fatalf("expected update to build packaged wavesrv before packaging, calls: %#v", runner.calls)
+	}
+	if electronBuilderIdx == -1 || serverBuildIdx > electronBuilderIdx {
+		t.Fatalf("packaged wavesrv must be built before electron-builder, calls: %#v", runner.calls)
 	}
 }
 

@@ -526,11 +526,17 @@ func runUpdateCommand(ctx updateContext, command []string) (string, error) {
 }
 
 func goUpdateCommand(args ...string) []string {
+	return goUpdateCommandWithEnv(nil, args...)
+}
+
+func goUpdateCommandWithEnv(extraEnv []string, args ...string) []string {
 	toolchain := os.Getenv("WAVETERM_UPDATE_GOTOOLCHAIN")
 	if toolchain == "" {
 		toolchain = "go1.26.2"
 	}
-	cmd := []string{"env", "GOTOOLCHAIN=" + toolchain, "go"}
+	cmd := []string{"env", "GOTOOLCHAIN=" + toolchain}
+	cmd = append(cmd, extraEnv...)
+	cmd = append(cmd, "go")
 	return append(cmd, args...)
 }
 
@@ -566,6 +572,8 @@ func packageWaveApp(ctx updateContext) error {
 		Label   string
 		Command []string
 	}{
+		{Label: "Preparing packaged native binaries", Command: []string{"mkdir", "-p", filepath.Join("dist", "bin")}},
+		{Label: "Building packaged wavesrv", Command: buildPackagedWaveSrvCommand(ctx)},
 		{Label: "Building frontend/backend bundle", Command: []string{"npm", "run", "build:prod"}},
 		{Label: "Packaging Wave app", Command: []string{"env", "CSC_IDENTITY_AUTO_DISCOVERY=false", "npm", "exec", "electron-builder", "--", "-c", "electron-builder.config.cjs", "-p", "never", "--dir"}},
 	}
@@ -574,6 +582,45 @@ func packageWaveApp(ctx updateContext) error {
 		if _, err := runUpdateCommand(ctx, command.Command); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func buildPackagedWaveSrvCommand(ctx updateContext) []string {
+	buildTime := ctx.Now().Format("200601021504")
+	ldflags := fmt.Sprintf("-X main.BuildTime=%s -X main.WaveVersion=%s", buildTime, ctx.Version)
+	outPath := filepath.Join("dist", "bin", "wavesrv."+packageBinaryArchName())
+	if runtime.GOOS == "windows" {
+		outPath += ".exe"
+	}
+	return goUpdateCommandWithEnv(
+		[]string{"CGO_ENABLED=1", "GOARCH=" + runtime.GOARCH},
+		"build",
+		"-tags", "osusergo,sqlite_omit_load_extension",
+		"-ldflags="+ldflags,
+		"-o", outPath,
+		"cmd/server/main-server.go",
+	)
+}
+
+func packageBinaryArchName() string {
+	if runtime.GOARCH == "amd64" {
+		return "x64"
+	}
+	return runtime.GOARCH
+}
+
+func packagedWaveSrvPath(ctx updateContext) string {
+	return filepath.Join(ctx.PackagedAppPath, "Contents", "Resources", "app.asar.unpacked", "dist", "bin", "wavesrv."+packageBinaryArchName())
+}
+
+func ensurePackagedWaveSrv(ctx updateContext) error {
+	path := packagedWaveSrvPath(ctx)
+	if runtime.GOOS == "windows" {
+		path += ".exe"
+	}
+	if _, err := ctx.Runner.Run("", "test", "-x", path); err != nil {
+		return fmt.Errorf("packaged Wave.app is missing executable wavesrv binary %s: %w", path, err)
 	}
 	return nil
 }
@@ -588,6 +635,9 @@ func installPackagedWaveApp(ctx updateContext) error {
 	}
 	if packagedApp == "" {
 		return fmt.Errorf("could not determine packaged Wave.app path")
+	}
+	if err := ensurePackagedWaveSrv(ctx); err != nil {
+		return err
 	}
 	announceUpdateStep(ctx, "Installing Wave app", fmt.Sprintf("%s -> %s", packagedApp, ctx.ActiveAppPath))
 	if _, err := runUpdateCommand(ctx, []string{"rm", "-rf", ctx.ActiveAppPath}); err != nil {
