@@ -4,6 +4,7 @@
 package cmd
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -38,6 +39,10 @@ type updateRunner interface {
 	Run(dir string, name string, args ...string) (string, error)
 }
 
+type updateStreamingRunner interface {
+	RunStreaming(dir string, name string, args ...string) (string, error)
+}
+
 type execUpdateRunner struct{}
 
 type updateContext struct {
@@ -45,6 +50,7 @@ type updateContext struct {
 	SourceRepo      string
 	SourceRef       string
 	ActiveWshPath   string
+	ActiveWavePath  string
 	ActiveAppPath   string
 	PackagedAppPath string
 	UpdateStatePath string
@@ -62,7 +68,7 @@ var updateCmd = &cobra.Command{
 	Long: `Update the local Wave app development install from a source checkout or remote.
 
 The default mode fetches updates, installs dependencies, regenerates generated files,
-packages the Electron app, installs the app bundle, and refreshes the active wsh binary.
+packages the Electron app, installs the app bundle, and refreshes the active wave/wsh binaries.
 --simple is a developer fast path: it skips dependency installation and generation, but
 still rebuilds/packages/installs the Wave app. If --simple sees dependency- or
 setup-sensitive files changed, it prints explicit follow-up commands to run.
@@ -108,6 +114,40 @@ func (execUpdateRunner) Run(dir string, name string, args ...string) (string, er
 	return string(out), nil
 }
 
+func (execUpdateRunner) RunStreaming(dir string, name string, args ...string) (string, error) {
+	cmd := exec.Command(name, args...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	var output bytes.Buffer
+	cmd.Stdout = io.MultiWriter(os.Stdout, &output)
+	cmd.Stderr = io.MultiWriter(os.Stderr, &output)
+	label := strings.TrimSpace(name + " " + strings.Join(args, " "))
+	fmt.Fprintf(os.Stderr, "[wsh update] running: %s\n", label)
+	start := time.Now()
+	if err := cmd.Start(); err != nil {
+		return output.String(), err
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case err := <-done:
+			if err != nil {
+				return output.String(), fmt.Errorf("%s failed after %s: %w\n%s", label, time.Since(start).Round(time.Second), err, output.String())
+			}
+			fmt.Fprintf(os.Stderr, "[wsh update] finished: %s (%s)\n", label, time.Since(start).Round(time.Second))
+			return output.String(), nil
+		case <-ticker.C:
+			fmt.Fprintf(os.Stderr, "[wsh update] still running: %s (%s elapsed)\n", label, time.Since(start).Round(time.Second))
+		}
+	}
+}
+
 func defaultUpdateContext() (updateContext, error) {
 	runner := execUpdateRunner{}
 	repoDir, err := defaultUpdateRepoDir(runner)
@@ -118,6 +158,7 @@ func defaultUpdateContext() (updateContext, error) {
 	if err != nil {
 		return updateContext{}, err
 	}
+	activeWavePath := defaultActiveWavePath(activeWshPath)
 	activeAppPath, err := defaultActiveWaveAppPath()
 	if err != nil {
 		return updateContext{}, err
@@ -135,6 +176,7 @@ func defaultUpdateContext() (updateContext, error) {
 		SourceRepo:      defaultUpdateSourceRepo(repoDir),
 		SourceRef:       defaultUpdateSourceRef(),
 		ActiveWshPath:   activeWshPath,
+		ActiveWavePath:  activeWavePath,
 		ActiveAppPath:   activeAppPath,
 		PackagedAppPath: defaultPackagedWaveAppPath(repoDir),
 		UpdateStatePath: statePath,
@@ -200,6 +242,22 @@ func defaultActiveWshPath() (string, error) {
 		return realPath, nil
 	}
 	return path, nil
+}
+
+func defaultActiveWavePath(activeWshPath string) string {
+	if envPath := os.Getenv("WAVETERM_UPDATE_ACTIVE_WAVE"); envPath != "" {
+		return envPath
+	}
+	if path, err := exec.LookPath("wave"); err == nil {
+		if realPath, err := filepath.EvalSymlinks(path); err == nil {
+			return realPath
+		}
+		return path
+	}
+	if activeWshPath != "" {
+		return filepath.Join(filepath.Dir(activeWshPath), "wave")
+	}
+	return "wave"
 }
 
 func defaultActiveWaveAppPath() (string, error) {
@@ -270,9 +328,11 @@ func runUpdate(opts updateOptions, ctx updateContext) error {
 	if opts.Check {
 		return runUpdateCheck(ctx)
 	}
+	announceUpdateStep(ctx, "Checking worktree", ctx.RepoDir)
 	if err := ensureUpdateWorktreeClean(ctx); err != nil {
 		return err
 	}
+	announceUpdateStep(ctx, "Fetching updates", fmt.Sprintf("%s %s", ctx.SourceRepo, ctx.SourceRef))
 	if err := fetchUpdateSource(ctx); err != nil {
 		return err
 	}
@@ -281,6 +341,7 @@ func runUpdate(opts updateOptions, ctx updateContext) error {
 		return err
 	}
 	changedFiles := parseUpdateChangedFiles(changedOutput)
+	announceUpdateStep(ctx, "Fast-forwarding checkout", ctx.RepoDir)
 	if _, err := ctx.Runner.Run(ctx.RepoDir, "git", "merge", "--ff-only", "FETCH_HEAD"); err != nil {
 		return err
 	}
@@ -290,6 +351,9 @@ func runUpdate(opts updateOptions, ctx updateContext) error {
 		}
 	}
 	if err := packageAndInstallWaveApp(ctx); err != nil {
+		return err
+	}
+	if err := buildAndInstallActiveWave(ctx); err != nil {
 		return err
 	}
 	if err := buildAndInstallActiveWsh(ctx); err != nil {
@@ -305,11 +369,13 @@ func runUpdate(opts updateOptions, ctx updateContext) error {
 	}
 	printSimpleUpdateReminders(ctx, opts, changedFiles)
 	fmt.Fprintf(ctx.Stdout, "Wave app updated: %s\n", ctx.ActiveAppPath)
+	fmt.Fprintf(ctx.Stdout, "wave updated: %s\n", ctx.ActiveWavePath)
 	fmt.Fprintf(ctx.Stdout, "wsh updated: %s\n", ctx.ActiveWshPath)
 	return nil
 }
 
 func runUpdateCheck(ctx updateContext) error {
+	announceUpdateStep(ctx, "Fetching updates", fmt.Sprintf("%s %s", ctx.SourceRepo, ctx.SourceRef))
 	if err := fetchUpdateSource(ctx); err != nil {
 		return err
 	}
@@ -328,15 +394,23 @@ func runUpdateCheck(ctx updateContext) error {
 		return nil
 	}
 	if installedCommit == "" {
-		fmt.Fprintf(ctx.Stdout, "Wave app install state is unknown for %s\nRun: wsh update\n", ctx.ActiveAppPath)
+		fmt.Fprintf(ctx.Stdout, "Wave app install state is unknown for %s\nRun: %s update\n", ctx.ActiveAppPath, updateCommandName())
 		return nil
 	}
 	if installedCommit != currentCommit {
-		fmt.Fprintf(ctx.Stdout, "Wave app package is stale: installed %s, checkout %s\nRun: wsh update\n", shortUpdateCommit(installedCommit), shortUpdateCommit(currentCommit))
+		fmt.Fprintf(ctx.Stdout, "Wave app package is stale: installed %s, checkout %s\nRun: %s update\n", shortUpdateCommit(installedCommit), shortUpdateCommit(currentCommit), updateCommandName())
 		return nil
 	}
-	fmt.Fprintf(ctx.Stdout, "Wave app and wsh are up to date\n")
+	fmt.Fprintf(ctx.Stdout, "Wave app, wave, and wsh are up to date\n")
 	return nil
+}
+
+func announceUpdateStep(ctx updateContext, label string, detail string) {
+	if detail == "" {
+		fmt.Fprintf(ctx.Stdout, "==> %s\n", label)
+		return
+	}
+	fmt.Fprintf(ctx.Stdout, "==> %s: %s\n", label, detail)
 }
 
 func ensureUpdateWorktreeClean(ctx updateContext) error {
@@ -378,16 +452,30 @@ func parseUpdateChangedFiles(output string) []string {
 	return files
 }
 
+func runUpdateCommand(ctx updateContext, command []string) (string, error) {
+	if len(command) == 0 {
+		return "", nil
+	}
+	if streamingRunner, ok := ctx.Runner.(updateStreamingRunner); ok {
+		return streamingRunner.RunStreaming(ctx.RepoDir, command[0], command[1:]...)
+	}
+	return ctx.Runner.Run(ctx.RepoDir, command[0], command[1:]...)
+}
+
 func runFullUpdatePrep(ctx updateContext) error {
-	commands := [][]string{
-		{"npm", "install"},
-		{"go", "mod", "tidy"},
-		{"go", "run", "cmd/generateschema/main-generateschema.go"},
-		{"go", "run", "cmd/generatets/main-generatets.go"},
-		{"go", "run", "cmd/generatego/main-generatego.go"},
+	commands := []struct {
+		Label   string
+		Command []string
+	}{
+		{Label: "Installing dependencies", Command: []string{"npm", "install", "--foreground-scripts"}},
+		{Label: "Tidying Go modules", Command: []string{"go", "mod", "tidy"}},
+		{Label: "Generating schema/types", Command: []string{"go", "run", "cmd/generateschema/main-generateschema.go"}},
+		{Label: "Generating TypeScript types", Command: []string{"go", "run", "cmd/generatets/main-generatets.go"}},
+		{Label: "Generating Go constants", Command: []string{"go", "run", "cmd/generatego/main-generatego.go"}},
 	}
 	for _, command := range commands {
-		if _, err := ctx.Runner.Run(ctx.RepoDir, command[0], command[1:]...); err != nil {
+		announceUpdateStep(ctx, command.Label, strings.Join(command.Command, " "))
+		if _, err := runUpdateCommand(ctx, command.Command); err != nil {
 			return err
 		}
 	}
@@ -402,12 +490,16 @@ func packageAndInstallWaveApp(ctx updateContext) error {
 }
 
 func packageWaveApp(ctx updateContext) error {
-	commands := [][]string{
-		{"npm", "run", "build:prod"},
-		{"npm", "exec", "electron-builder", "--", "-c", "electron-builder.config.cjs", "-p", "never", "--dir"},
+	commands := []struct {
+		Label   string
+		Command []string
+	}{
+		{Label: "Building frontend/backend bundle", Command: []string{"npm", "run", "build:prod"}},
+		{Label: "Packaging Wave app", Command: []string{"npm", "exec", "electron-builder", "--", "-c", "electron-builder.config.cjs", "-p", "never", "--dir"}},
 	}
 	for _, command := range commands {
-		if _, err := ctx.Runner.Run(ctx.RepoDir, command[0], command[1:]...); err != nil {
+		announceUpdateStep(ctx, command.Label, strings.Join(command.Command, " "))
+		if _, err := runUpdateCommand(ctx, command.Command); err != nil {
 			return err
 		}
 	}
@@ -425,17 +517,27 @@ func installPackagedWaveApp(ctx updateContext) error {
 	if packagedApp == "" {
 		return fmt.Errorf("could not determine packaged Wave.app path")
 	}
-	if _, err := ctx.Runner.Run(ctx.RepoDir, "rm", "-rf", ctx.ActiveAppPath); err != nil {
+	announceUpdateStep(ctx, "Installing Wave app", fmt.Sprintf("%s -> %s", packagedApp, ctx.ActiveAppPath))
+	if _, err := runUpdateCommand(ctx, []string{"rm", "-rf", ctx.ActiveAppPath}); err != nil {
 		return err
 	}
-	_, err := ctx.Runner.Run(ctx.RepoDir, "ditto", packagedApp, ctx.ActiveAppPath)
+	_, err := runUpdateCommand(ctx, []string{"ditto", packagedApp, ctx.ActiveAppPath})
 	return err
 }
 
+func buildAndInstallActiveWave(ctx updateContext) error {
+	return buildAndInstallCommandBinary(ctx, "Installing wave", ctx.ActiveWavePath)
+}
+
 func buildAndInstallActiveWsh(ctx updateContext) error {
+	return buildAndInstallCommandBinary(ctx, "Installing wsh", ctx.ActiveWshPath)
+}
+
+func buildAndInstallCommandBinary(ctx updateContext, label string, outPath string) error {
 	buildTime := ctx.Now().Format("200601021504")
 	ldflags := fmt.Sprintf("-s -w -X main.BuildTime=%s -X main.WaveVersion=%s", buildTime, ctx.Version)
-	_, err := ctx.Runner.Run(ctx.RepoDir, "go", "build", "-ldflags="+ldflags, "-o", ctx.ActiveWshPath, "cmd/wsh/main-wsh.go")
+	announceUpdateStep(ctx, label, outPath)
+	_, err := runUpdateCommand(ctx, []string{"go", "build", "-ldflags=" + ldflags, "-o", outPath, "cmd/wsh/main-wsh.go"})
 	return err
 }
 
@@ -444,7 +546,8 @@ func runUpdateSetup(ctx updateContext) error {
 		fmt.Fprintf(ctx.Stdout, "No setup step is defined for wsh update.\n")
 		return nil
 	}
-	_, err := ctx.Runner.Run(ctx.RepoDir, ctx.SetupCommand[0], ctx.SetupCommand[1:]...)
+	announceUpdateStep(ctx, "Refreshing wsh rcfiles", strings.Join(ctx.SetupCommand, " "))
+	_, err := runUpdateCommand(ctx, ctx.SetupCommand)
 	return err
 }
 
@@ -453,10 +556,10 @@ func printSimpleUpdateReminders(ctx updateContext, opts updateOptions, changedFi
 		return
 	}
 	if hasUpdateDependencyChanges(changedFiles) {
-		fmt.Fprintf(ctx.Stdout, "Run: wsh update\nReason: dependencies may need reinstall before rebuild/runtime use.\n")
+		fmt.Fprintf(ctx.Stdout, "Run: %s update\nReason: dependencies may need reinstall before rebuild/runtime use.\n", updateCommandName())
 	}
 	if hasUpdateSetupSensitiveChanges(changedFiles) {
-		fmt.Fprintf(ctx.Stdout, "Run: wsh update --setup\nReason: setup/rcfile integration may need refresh.\n")
+		fmt.Fprintf(ctx.Stdout, "Run: %s update --setup\nReason: setup/rcfile integration may need refresh.\n", updateCommandName())
 	}
 }
 
@@ -484,6 +587,10 @@ func hasUpdateSetupSensitiveChanges(files []string) bool {
 		}
 	}
 	return false
+}
+
+func updateCommandName() string {
+	return "wave"
 }
 
 func readUpdateStateCommit(path string) string {

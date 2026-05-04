@@ -20,16 +20,16 @@ This is the detailed wsh reference documention. For an overview of `wsh` functio
 
 ## update
 
-Update the local Wave app development install from a source checkout or remote.
+Update the local Wave app development install from a source checkout or remote. Prefer the app-level `wave` command for this flow.
 
 ```sh
-wsh update --check    # fetch and compare only; does not build, package, or install
-wsh update --simple   # developer fast path: rebuild/package/install app without dependency install or generation
-wsh update            # full update: dependencies, generation, package app, install app, refresh wsh
-wsh update --setup    # full update plus rcfile setup refresh
+wave update --check    # fetch and compare only; does not build, package, or install
+wave update --simple   # developer fast path: rebuild/package/install app without dependency install or generation
+wave update            # full update: dependencies, generation, package app, install app, refresh wave/wsh
+wave update --setup    # full update plus rcfile setup refresh
 ```
 
-`--check` checks both source commits and whether the local packaged app is known to match the checkout. `--simple` still repackages and installs the Wave app; it only skips dependency installation and generation. If dependency manifests changed, it prints `Run: wsh update`. If setup-sensitive files changed, it prints `Run: wsh update --setup`.
+`--check` checks both source commits and whether the local packaged app is known to match the checkout. `--simple` still repackages and installs the Wave app; it only skips dependency installation and generation. If dependency manifests changed, it prints `Run: wave update`. If setup-sensitive files changed, it prints `Run: wave update --setup`.
 
 ---
 

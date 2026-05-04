@@ -41,6 +41,7 @@ func testUpdateContext(r *recordingUpdateRunner, stdout *bytes.Buffer) updateCon
 		SourceRepo:      "/repo/source-waveterm",
 		SourceRef:       "main",
 		ActiveWshPath:   "/active/bin/wsh",
+		ActiveWavePath:  "/active/bin/wave",
 		ActiveAppPath:   "/Applications/Wave.app",
 		PackagedAppPath: "/repo/waveterm/dist/mac-arm64/Wave.app",
 		UpdateStatePath: "",
@@ -96,7 +97,7 @@ func TestRunUpdateCheckReportsUnknownAppInstallState(t *testing.T) {
 	}
 
 	out := stdout.String()
-	if !strings.Contains(out, "Wave app install state is unknown") || !strings.Contains(out, "Run: wsh update") {
+	if !strings.Contains(out, "Wave app install state is unknown") || !strings.Contains(out, "Run: wave update") {
 		t.Fatalf("expected unknown app state to request update, got %q", out)
 	}
 	if runner.calledContains("electron-builder") || runner.calledContains("ditto") {
@@ -119,7 +120,7 @@ func TestRunUpdateCheckReportsStaleAppPackage(t *testing.T) {
 	}
 
 	out := stdout.String()
-	if !strings.Contains(out, "Wave app package is stale") || !strings.Contains(out, "Run: wsh update") {
+	if !strings.Contains(out, "Wave app package is stale") || !strings.Contains(out, "Run: wave update") {
 		t.Fatalf("expected stale app package warning, got %q", out)
 	}
 }
@@ -136,7 +137,7 @@ func TestRunUpdateCheckReportsAppAndWshUpToDate(t *testing.T) {
 		t.Fatalf("runUpdate() error = %v", err)
 	}
 
-	if !strings.Contains(stdout.String(), "Wave app and wsh are up to date") {
+	if !strings.Contains(stdout.String(), "Wave app, wave, and wsh are up to date") {
 		t.Fatalf("expected up-to-date output, got %q", stdout.String())
 	}
 }
@@ -163,6 +164,7 @@ func TestRunUpdateSimplePackagesAppAndInstallsActiveWsh(t *testing.T) {
 		"npm exec electron-builder -- -c electron-builder.config.cjs -p never --dir",
 		"rm -rf /Applications/Wave.app",
 		"ditto /repo/waveterm/dist/mac-arm64/Wave.app /Applications/Wave.app",
+		"go build -ldflags=-s -w -X main.BuildTime=202605041234 -X main.WaveVersion=0.14.5 -o /active/bin/wave cmd/wsh/main-wsh.go",
 		"go build -ldflags=-s -w -X main.BuildTime=202605041234 -X main.WaveVersion=0.14.5 -o /active/bin/wsh cmd/wsh/main-wsh.go",
 		"git rev-parse HEAD",
 	}
@@ -170,7 +172,7 @@ func TestRunUpdateSimplePackagesAppAndInstallsActiveWsh(t *testing.T) {
 		t.Fatalf("calls mismatch\n got: %#v\nwant: %#v", runner.calls, wantCalls)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "Wave app updated") || !strings.Contains(out, "wsh updated") {
+	if !strings.Contains(out, "Wave app updated") || !strings.Contains(out, "wave updated") || !strings.Contains(out, "wsh updated") {
 		t.Fatalf("expected app and wsh success output, got %q", out)
 	}
 }
@@ -189,7 +191,7 @@ func TestRunUpdateSimpleWarnsWhenDependencyFilesChanged(t *testing.T) {
 	}
 
 	out := stdout.String()
-	if !strings.Contains(out, "Run: wsh update") || !strings.Contains(out, "dependencies may need reinstall") {
+	if !strings.Contains(out, "Run: wave update") || !strings.Contains(out, "dependencies may need reinstall") {
 		t.Fatalf("expected full update dependency reminder, got %q", out)
 	}
 	if runner.calledContains("npm install") {
@@ -211,7 +213,7 @@ func TestRunUpdateSimpleWarnsWhenSetupSensitiveFilesChanged(t *testing.T) {
 	}
 
 	out := stdout.String()
-	if !strings.Contains(out, "Run: wsh update --setup") || !strings.Contains(out, "setup/rcfile integration may need refresh") {
+	if !strings.Contains(out, "Run: wave update --setup") || !strings.Contains(out, "setup/rcfile integration may need refresh") {
 		t.Fatalf("expected setup reminder, got %q", out)
 	}
 	if runner.calledContains("/active/bin/wsh rcfiles") {
@@ -240,6 +242,43 @@ func TestRunUpdateSetupRunsRcfilesAfterFullUpdate(t *testing.T) {
 	}
 	if !runner.calledContains("/active/bin/wsh rcfiles") {
 		t.Fatalf("setup update should run rcfile setup after install, calls: %#v", runner.calls)
+	}
+}
+
+func TestRunUpdateFullPrintsLongRunningProgress(t *testing.T) {
+	runner := &recordingUpdateRunner{outputs: map[string]string{
+		"git status --porcelain":               "",
+		"git diff --name-only HEAD FETCH_HEAD": "frontend/app/view/term/term.tsx\n",
+		"git rev-parse HEAD":                   "abcdef1234567890\n",
+	}}
+	var stdout bytes.Buffer
+
+	err := runUpdate(updateOptions{}, testUpdateContext(runner, &stdout))
+	if err != nil {
+		t.Fatalf("runUpdate() error = %v", err)
+	}
+
+	out := stdout.String()
+	want := []string{
+		"Checking worktree",
+		"Fetching updates",
+		"Installing dependencies",
+		"Generating schema/types",
+		"Packaging Wave app",
+		"Installing Wave app",
+		"Installing wave",
+		"Installing wsh",
+	}
+	for _, msg := range want {
+		if !strings.Contains(out, msg) {
+			t.Fatalf("expected progress message %q in output: %q", msg, out)
+		}
+	}
+}
+
+func TestUpdateCommandNameDefaultsToWave(t *testing.T) {
+	if got := updateCommandName(); got != "wave" {
+		t.Fatalf("updateCommandName() = %q, want wave", got)
 	}
 }
 

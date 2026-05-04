@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 
 	"github.com/spf13/cobra"
@@ -230,8 +231,31 @@ func sendActivity(wshCmdName string, success bool) {
 	wshclient.WshActivityCommand(RpcClient, dataMap, nil)
 }
 
+func rootCommandNameForExecutable(executable string) string {
+	if filepath.Base(executable) == "wave" {
+		return "wave"
+	}
+	return "wsh"
+}
+
+func configureRootCommandForExecutable(args []string) {
+	name := "wsh"
+	if len(args) > 0 {
+		name = rootCommandNameForExecutable(args[0])
+	}
+	rootCmd.Use = name
+	if name == "wave" {
+		rootCmd.Short = "CLI tool to manage Wave Terminal"
+		rootCmd.Long = `wave is a command line utility to manage and update Wave Terminal`
+		return
+	}
+	rootCmd.Short = "CLI tool to control Wave Terminal"
+	rootCmd.Long = `wsh is a small utility that lets you do cool things with Wave Terminal, right from the command line`
+}
+
 // Execute executes the root command.
 func Execute() {
+	configureRootCommandForExecutable(os.Args)
 	defer func() {
 		r := recover()
 		if r != nil {
