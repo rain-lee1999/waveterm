@@ -27,6 +27,7 @@ var (
 )
 
 var errUpdateDirtyWorktree = errors.New("dirty worktree")
+var errUpdateActiveAppRunning = errors.New("active Wave app running")
 
 type updateOptions struct {
 	Check  bool
@@ -72,7 +73,11 @@ packages the Electron app, installs the app bundle, and refreshes the active wav
 --simple is a developer fast path: it skips dependency installation and generation, but
 still rebuilds/packages/installs the Wave app. If --simple sees dependency- or
 setup-sensitive files changed, it prints explicit follow-up commands to run.
---check fetches and compares only; it never builds, packages, or installs.`,
+--check fetches and compares only; it never builds, packages, or installs.
+
+Before replacing /Applications/Wave.app, update requires the Wave app to be fully quit.
+Installing over a running Electron app can leave a stale hidden instance alive and cause
+new launches to immediately hand off to that old process.`,
 	RunE:                  runUpdateCmd,
 	DisableFlagsInUseLine: true,
 }
@@ -349,6 +354,9 @@ func runUpdate(opts updateOptions, ctx updateContext) error {
 	if err := ensureUpdateWorktreeClean(ctx); err != nil {
 		return err
 	}
+	if err := ensureActiveWaveAppNotRunning(ctx); err != nil {
+		return err
+	}
 	announceUpdateStep(ctx, "Fetching updates", fmt.Sprintf("%s %s", ctx.SourceRepo, ctx.SourceRef))
 	if err := fetchUpdateSource(ctx); err != nil {
 		return err
@@ -439,6 +447,39 @@ func ensureUpdateWorktreeClean(ctx updateContext) error {
 		return nil
 	}
 	return fmt.Errorf("%w: %s has local changes; commit or stash before running %s update", errUpdateDirtyWorktree, ctx.RepoDir, updateCommandName())
+}
+
+func ensureActiveWaveAppNotRunning(ctx updateContext) error {
+	running, err := activeWaveAppProcesses(ctx)
+	if err != nil {
+		return err
+	}
+	if len(running) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%w: Wave.app is running from %s; quit Wave completely before running %s update. Running processes:\n%s", errUpdateActiveAppRunning, ctx.ActiveAppPath, updateCommandName(), strings.Join(running, "\n"))
+}
+
+func activeWaveAppProcesses(ctx updateContext) ([]string, error) {
+	if runtime.GOOS != "darwin" || ctx.ActiveAppPath == "" {
+		return nil, nil
+	}
+	out, err := ctx.Runner.Run("", "ps", "-axo", "pid=,command=")
+	if err != nil {
+		return nil, err
+	}
+	appContentsPath := filepath.Clean(ctx.ActiveAppPath) + string(os.PathSeparator) + "Contents" + string(os.PathSeparator)
+	var running []string
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.Contains(line, appContentsPath) {
+			running = append(running, line)
+		}
+	}
+	return running, nil
 }
 
 func fetchUpdateSource(ctx updateContext) error {

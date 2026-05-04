@@ -159,6 +159,7 @@ func TestRunUpdateSimplePackagesAppAndInstallsActiveWsh(t *testing.T) {
 
 	wantCalls := []string{
 		"git status --porcelain",
+		"ps -axo pid=,command=",
 		"git fetch --quiet /repo/source-waveterm main",
 		"git diff --name-only HEAD FETCH_HEAD",
 		"git merge --ff-only FETCH_HEAD",
@@ -306,6 +307,28 @@ func TestDefaultActiveWshPathForWaveExecutableUsesSiblingWsh(t *testing.T) {
 func TestUpdateCommandNameDefaultsToWave(t *testing.T) {
 	if got := updateCommandName(); got != "wave" {
 		t.Fatalf("updateCommandName() = %q, want wave", got)
+	}
+}
+
+func TestRunUpdateRefusesRunningActiveAppBeforeMutatingCheckout(t *testing.T) {
+	runner := &recordingUpdateRunner{outputs: map[string]string{
+		"git status --porcelain": "",
+		"ps -axo pid=,command=":  "123 /Applications/Wave.app/Contents/MacOS/Wave\n456 /Applications/Wave.app/Contents/Frameworks/Wave Helper.app/Contents/MacOS/Wave Helper\n",
+	}}
+	var stdout bytes.Buffer
+
+	err := runUpdate(updateOptions{Simple: true}, testUpdateContext(runner, &stdout))
+	if err == nil {
+		t.Fatal("expected running Wave app error")
+	}
+	if !errors.Is(err, errUpdateActiveAppRunning) {
+		t.Fatalf("expected errUpdateActiveAppRunning, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "Wave.app is running") || !strings.Contains(err.Error(), "quit Wave") {
+		t.Fatalf("running app error should explain how to recover, got %v", err)
+	}
+	if runner.calledContains("git fetch") || runner.calledContains("git merge") || runner.calledContains("npm run build") || runner.calledContains("rm -rf /Applications/Wave.app") {
+		t.Fatalf("running app must stop before fetch/merge/build/install, calls: %#v", runner.calls)
 	}
 }
 
