@@ -234,14 +234,27 @@ func defaultActiveWshPath() (string, error) {
 	if envPath := os.Getenv("WAVETERM_UPDATE_ACTIVE_WSH"); envPath != "" {
 		return envPath, nil
 	}
-	path, err := exec.LookPath("wsh")
-	if err != nil {
-		return "", fmt.Errorf("could not find active wsh on PATH; set WAVETERM_UPDATE_ACTIVE_WSH")
+	if path, err := exec.LookPath("wsh"); err == nil {
+		if realPath, err := filepath.EvalSymlinks(path); err == nil {
+			return realPath, nil
+		}
+		return path, nil
 	}
+	if inferredPath, ok := defaultActiveWshPathForExecutable(os.Args[0]); ok {
+		return inferredPath, nil
+	}
+	return "", fmt.Errorf("could not find active wsh on PATH; set WAVETERM_UPDATE_ACTIVE_WSH")
+}
+
+func defaultActiveWshPathForExecutable(executable string) (string, bool) {
+	if filepath.Base(executable) != "wave" {
+		return "", false
+	}
+	path := filepath.Join(filepath.Dir(executable), "wsh")
 	if realPath, err := filepath.EvalSymlinks(path); err == nil {
-		return realPath, nil
+		return realPath, true
 	}
-	return path, nil
+	return path, true
 }
 
 func defaultActiveWavePath(activeWshPath string) string {
@@ -421,7 +434,7 @@ func ensureUpdateWorktreeClean(ctx updateContext) error {
 	if strings.TrimSpace(out) == "" {
 		return nil
 	}
-	return fmt.Errorf("%w: %s has local changes; commit or stash before running wsh update", errUpdateDirtyWorktree, ctx.RepoDir)
+	return fmt.Errorf("%w: %s has local changes; commit or stash before running %s update", errUpdateDirtyWorktree, ctx.RepoDir, updateCommandName())
 }
 
 func fetchUpdateSource(ctx updateContext) error {

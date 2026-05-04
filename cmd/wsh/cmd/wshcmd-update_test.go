@@ -276,6 +276,16 @@ func TestRunUpdateFullPrintsLongRunningProgress(t *testing.T) {
 	}
 }
 
+func TestDefaultActiveWshPathForWaveExecutableUsesSiblingWsh(t *testing.T) {
+	got, ok := defaultActiveWshPathForExecutable("/active/bin/wave")
+	if !ok {
+		t.Fatal("expected wave executable to infer sibling wsh path")
+	}
+	if got != "/active/bin/wsh" {
+		t.Fatalf("defaultActiveWshPathForExecutable() = %q, want /active/bin/wsh", got)
+	}
+}
+
 func TestUpdateCommandNameDefaultsToWave(t *testing.T) {
 	if got := updateCommandName(); got != "wave" {
 		t.Fatalf("updateCommandName() = %q, want wave", got)
@@ -294,6 +304,9 @@ func TestRunUpdateRefusesDirtyWorktree(t *testing.T) {
 	}
 	if !errors.Is(err, errUpdateDirtyWorktree) {
 		t.Fatalf("expected errUpdateDirtyWorktree, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "wave update") {
+		t.Fatalf("dirty worktree error should mention wave update, got %v", err)
 	}
 	if runner.calledContains("git fetch") || runner.calledContains("go build") || runner.calledContains("electron-builder") {
 		t.Fatalf("dirty worktree must stop before fetch/build/package, calls: %#v", runner.calls)
