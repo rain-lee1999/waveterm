@@ -123,7 +123,8 @@ func (execUpdateRunner) RunStreaming(dir string, name string, args ...string) (s
 	cmd.Stdout = io.MultiWriter(os.Stdout, &output)
 	cmd.Stderr = io.MultiWriter(os.Stderr, &output)
 	label := strings.TrimSpace(name + " " + strings.Join(args, " "))
-	fmt.Fprintf(os.Stderr, "[wsh update] running: %s\n", label)
+	progressPrefix := updateCommandName() + " update"
+	fmt.Fprintf(os.Stderr, "[%s] running: %s\n", progressPrefix, label)
 	start := time.Now()
 	if err := cmd.Start(); err != nil {
 		return output.String(), err
@@ -140,10 +141,10 @@ func (execUpdateRunner) RunStreaming(dir string, name string, args ...string) (s
 			if err != nil {
 				return output.String(), fmt.Errorf("%s failed after %s: %w\n%s", label, time.Since(start).Round(time.Second), err, output.String())
 			}
-			fmt.Fprintf(os.Stderr, "[wsh update] finished: %s (%s)\n", label, time.Since(start).Round(time.Second))
+			fmt.Fprintf(os.Stderr, "[%s] finished: %s (%s)\n", progressPrefix, label, time.Since(start).Round(time.Second))
 			return output.String(), nil
 		case <-ticker.C:
-			fmt.Fprintf(os.Stderr, "[wsh update] still running: %s (%s elapsed)\n", label, time.Since(start).Round(time.Second))
+			fmt.Fprintf(os.Stderr, "[%s] still running: %s (%s elapsed)\n", progressPrefix, label, time.Since(start).Round(time.Second))
 		}
 	}
 }
