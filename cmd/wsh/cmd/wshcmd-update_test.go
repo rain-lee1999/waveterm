@@ -332,6 +332,22 @@ func TestRunUpdateRefusesRunningActiveAppBeforeMutatingCheckout(t *testing.T) {
 	}
 }
 
+func TestActiveWaveAppProcessesIgnoresShellCommandsThatOnlyMentionAppPath(t *testing.T) {
+	runner := &recordingUpdateRunner{outputs: map[string]string{
+		"ps -axo pid=,command=": "87493 /bin/bash -c pgrep -f '/Applications/Wave.app/Contents/'\n87532 /Applications/Wave.app/Contents/MacOS/Wave\n",
+	}}
+	var stdout bytes.Buffer
+
+	running, err := activeWaveAppProcesses(testUpdateContext(runner, &stdout))
+	if err != nil {
+		t.Fatalf("activeWaveAppProcesses() error = %v", err)
+	}
+	want := []string{"87532 /Applications/Wave.app/Contents/MacOS/Wave"}
+	if !reflect.DeepEqual(running, want) {
+		t.Fatalf("activeWaveAppProcesses() = %#v, want %#v", running, want)
+	}
+}
+
 func TestRunUpdateRefusesDirtyWorktree(t *testing.T) {
 	runner := &recordingUpdateRunner{outputs: map[string]string{
 		"git status --porcelain": " M cmd/wsh/main-wsh.go\n",

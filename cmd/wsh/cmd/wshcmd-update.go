@@ -475,7 +475,12 @@ func activeWaveAppProcesses(ctx updateContext) ([]string, error) {
 		if line == "" {
 			continue
 		}
-		if strings.Contains(line, appContentsPath) {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		command := strings.TrimSpace(strings.TrimPrefix(line, fields[0]))
+		if strings.HasPrefix(command, appContentsPath) {
 			running = append(running, line)
 		}
 	}
