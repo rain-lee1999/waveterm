@@ -10,6 +10,14 @@ export type TermButtonBarButton = {
     addnewline?: boolean;
 };
 
+export const DEFAULT_TERM_BUTTON_BAR_BUTTONS: TermButtonBarButton[] = [
+    { label: "Pwd", command: "pwd", tooltip: "Print current directory", addnewline: true },
+    { label: "Ls", command: "ls -la", tooltip: "List files", addnewline: true },
+    { label: "Clear", command: "clear", tooltip: "Clear terminal", addnewline: true },
+    { label: "Git", command: "git status", tooltip: "Show git status", addnewline: true },
+    { label: "Ctrl-C", command: "\u0003", tooltip: "Send Ctrl-C" },
+];
+
 function isRecord(value: unknown): value is Record<string, unknown> {
     return value != null && typeof value === "object" && !Array.isArray(value);
 }
@@ -44,6 +52,17 @@ export function normalizeTermButtonBarConfig(value: unknown): TermButtonBarButto
         buttons.push(button);
     }
     return buttons;
+}
+
+export function isTermButtonBarVisible(value: unknown): boolean {
+    return normalizeTermButtonBarConfig(value).length > 0;
+}
+
+export function getNextTermButtonBarConfig(value: unknown): TermButtonBarButton[] {
+    if (isTermButtonBarVisible(value)) {
+        return [];
+    }
+    return DEFAULT_TERM_BUTTON_BAR_BUTTONS;
 }
 
 export function resolveTermButtonCommand(button: TermButtonBarButton): string {

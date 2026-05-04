@@ -40,6 +40,7 @@ import { boundNumber, fireAndForget, stringToBase64 } from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
 import { getBlockingCommand } from "./shellblocking";
+import { getNextTermButtonBarConfig, isTermButtonBarVisible } from "./term-buttonbar";
 import { computeTheme, DefaultTermTheme, isLikelyOnSameHost, trimTerminalSelection } from "./termutil";
 import { TermWrap, WebGLSupported } from "./termwrap";
 
@@ -922,6 +923,7 @@ export class TermViewModel implements ViewModel {
         const defaultFontSize = globalStore.get(getSettingsKeyAtom("term:fontsize")) ?? 12;
         const defaultAllowBracketedPaste = globalStore.get(getSettingsKeyAtom("term:allowbracketedpaste")) ?? true;
         const transparencyMeta = globalStore.get(getBlockMetaKeyAtom(this.blockId, "term:transparency"));
+        const buttonBarConfig = globalStore.get(getOverrideConfigAtom(this.blockId, "term:buttonbar"));
         const blockData = globalStore.get(this.blockAtom);
         const overrideFontSize = blockData?.meta?.["term:fontsize"];
 
@@ -1188,6 +1190,17 @@ export class TermViewModel implements ViewModel {
         fullMenu.push({
             label: "Transparency",
             submenu: transparencySubMenu,
+        });
+        fullMenu.push({
+            label: "Button Bar",
+            type: "checkbox",
+            checked: isTermButtonBarVisible(buttonBarConfig),
+            click: () => {
+                RpcApi.SetMetaCommand(TabRpcClient, {
+                    oref: WOS.makeORef("block", this.blockId),
+                    meta: { "term:buttonbar": getNextTermButtonBarConfig(buttonBarConfig) },
+                });
+            },
         });
         fullMenu.push({ type: "separator" });
         const advancedSubmenu: ContextMenuItem[] = [];

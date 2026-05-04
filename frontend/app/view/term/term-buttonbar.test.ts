@@ -1,7 +1,26 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeTermButtonBarConfig, resolveTermButtonCommand } from "./term-buttonbar";
+import {
+    DEFAULT_TERM_BUTTON_BAR_BUTTONS,
+    getNextTermButtonBarConfig,
+    isTermButtonBarVisible,
+    normalizeTermButtonBarConfig,
+    resolveTermButtonCommand,
+} from "./term-buttonbar";
 
+describe("button bar visibility toggle helpers", () => {
+    it("provides default buttons when enabling an empty button bar", () => {
+        expect(isTermButtonBarVisible(null)).toBe(false);
+        expect(getNextTermButtonBarConfig(null)).toEqual(DEFAULT_TERM_BUTTON_BAR_BUTTONS);
+    });
+
+    it("returns an empty override when disabling a visible button bar", () => {
+        const current = [{ label: "Status", command: "git status", addnewline: true }];
+
+        expect(isTermButtonBarVisible(current)).toBe(true);
+        expect(getNextTermButtonBarConfig(current)).toEqual([]);
+    });
+});
 describe("normalizeTermButtonBarConfig", () => {
     it("keeps only buttons with a non-empty label and command", () => {
         expect(
