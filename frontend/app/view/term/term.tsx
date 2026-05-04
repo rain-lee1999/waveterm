@@ -21,6 +21,7 @@ import clsx from "clsx";
 import debug from "debug";
 import * as jotai from "jotai";
 import * as React from "react";
+import { TermButtonBar } from "./term-buttonbar";
 import { TermLinkTooltip } from "./term-tooltip";
 import { TermStickers } from "./termsticker";
 import { TermThemeUpdater } from "./termtheme";
@@ -198,6 +199,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
     const isFocused = jotai.useAtomValue(model.nodeModel.isFocused);
     const isMI = jotai.useAtomValue(tabModel.isTermMultiInput);
     const isBasicTerm = termMode != "vdom" && blockData?.meta?.controller != "cmd"; // needs to match isBasicTerm
+    const buttonBarConfig = jotai.useAtomValue(getOverrideConfigAtom(blockId, "term:buttonbar"));
 
     // search
     const searchProps = useSearch({
@@ -393,6 +395,14 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             <TermToolbarVDomNode key="vdom-toolbar" blockId={blockId} model={model} />
             <TermVDomNode key="vdom" blockId={blockId} model={model} />
             <div key="connect-elem" className="term-connectelem" ref={connectElemRef} />
+            {termMode == "term" && isBasicTerm && (
+                <TermButtonBar
+                    key="term-buttonbar"
+                    config={buttonBarConfig}
+                    onSendInput={model.sendDataToController.bind(model)}
+                    onRequestFocus={model.giveFocus.bind(model)}
+                />
+            )}
             <NullErrorBoundary debugName="TermLinkTooltip">
                 <TermLinkTooltip termWrap={termWrapInst} />
             </NullErrorBoundary>

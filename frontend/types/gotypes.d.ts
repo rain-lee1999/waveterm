@@ -1190,6 +1190,7 @@ declare global {
         "term:bellindicator"?: boolean;
         "term:osc52"?: string;
         "term:durable"?: boolean;
+        "term:buttonbar"?: TermButtonBarButtonType[];
         "web:zoom"?: number;
         "web:hidenav"?: boolean;
         "web:partition"?: string;
@@ -1426,6 +1427,7 @@ declare global {
         "term:durable"?: boolean;
         "term:showsplitbuttons"?: boolean;
         "term:trimtrailingwhitespace"?: boolean;
+        "term:buttonbar"?: TermButtonBarButtonType[];
         "editor:minimapenabled"?: boolean;
         "editor:stickyscrollenabled"?: boolean;
         "editor:wordwrap"?: boolean;
@@ -1589,6 +1591,7 @@ declare global {
         "debug:panictype"?: string;
         "block:view"?: string;
         "block:controller"?: string;
+        "block:subblock"?: boolean;
         "ai:backendtype"?: string;
         "ai:local"?: boolean;
         "wsh:cmd"?: string;
@@ -1681,6 +1684,14 @@ declare global {
         name: string;
         layoutstate: string;
         blockids: string[];
+    };
+
+    // waveobj.TermButtonBarButtonType
+    type TermButtonBarButtonType = {
+        label?: string;
+        command?: string;
+        tooltip?: string;
+        addnewline?: boolean;
     };
 
     // waveobj.TermSize

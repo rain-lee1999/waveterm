@@ -62,6 +62,41 @@
         margin: 5px 1px 5px 4px;
     }
 
+    .term-buttonbar {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 4px;
+        min-height: 30px;
+        flex-shrink: 0;
+        padding: 3px 6px;
+        border-top: 1px solid var(--border-color);
+        overflow-x: auto;
+        overflow-y: hidden;
+        background-color: var(--main-bg-color);
+    }
+
+    .term-buttonbar-button {
+        flex: 0 0 auto;
+        min-width: 42px;
+        max-width: 180px;
+        height: 22px;
+        padding: 0 9px;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 12px;
+        color: var(--main-text-color);
+        background-color: var(--block-bg-color);
+        cursor: pointer;
+    }
+
+    .term-buttonbar-button:hover {
+        background-color: var(--hover-bg-color);
+    }
+
     .term-htmlelem {
         display: flex;
         flex-direction: column;

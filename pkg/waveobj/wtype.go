@@ -250,6 +250,13 @@ type BlockDef struct {
 	Meta  MetaMapType         `json:"meta,omitempty"`
 }
 
+type TermButtonBarButtonType struct {
+	Label      string `json:"label,omitempty"`
+	Command    string `json:"command,omitempty"`
+	Tooltip    string `json:"tooltip,omitempty"`
+	AddNewline *bool  `json:"addnewline,omitempty"`
+}
+
 type StickerClickOptsType struct {
 	SendInput   string    `json:"sendinput,omitempty"`
 	CreateBlock *BlockDef `json:"createblock,omitempty"`
