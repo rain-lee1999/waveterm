@@ -6,6 +6,8 @@ package cmd
 import (
 	"bytes"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -276,6 +278,18 @@ func TestRunUpdateFullPrintsLongRunningProgress(t *testing.T) {
 		if !strings.Contains(out, msg) {
 			t.Fatalf("expected progress message %q in output: %q", msg, out)
 		}
+	}
+}
+
+func TestDefaultPackagedWaveAppPathPrefersElectronBuilderMakeDir(t *testing.T) {
+	repoDir := t.TempDir()
+	makeApp := filepath.Join(repoDir, "make", "mac-arm64", "Wave.app")
+	if err := os.MkdirAll(makeApp, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := defaultPackagedWaveAppPath(repoDir); got != makeApp {
+		t.Fatalf("defaultPackagedWaveAppPath() = %q, want %q", got, makeApp)
 	}
 }
 

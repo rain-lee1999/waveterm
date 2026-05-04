@@ -294,6 +294,9 @@ func defaultPackagedWaveAppPath(repoDir string) string {
 		return envPath
 	}
 	candidates := []string{
+		filepath.Join(repoDir, "make", "mac-arm64", "Wave.app"),
+		filepath.Join(repoDir, "make", "mac", "Wave.app"),
+		filepath.Join(repoDir, "make", "mac-universal", "Wave.app"),
 		filepath.Join(repoDir, "dist", "mac-arm64", "Wave.app"),
 		filepath.Join(repoDir, "dist", "mac", "Wave.app"),
 		filepath.Join(repoDir, "dist", "mac-universal", "Wave.app"),
